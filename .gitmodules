@@ -1,0 +1,3 @@
+[submodule "src/main/c/libs/libserial"]
+	path = src/main/c/libs/libserial
+	url = https://github.com/ljbo82/libserial.git
