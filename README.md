@@ -19,8 +19,8 @@ This project is licensed under the **Apache License 2.0**. See the files called 
 
 > **Native libraries**
 > 
-> This projects uses a [native serial port communication library](https://github.com/ljbo82/serial) which is licensed under MIT license.
+> This projects uses a [native serial port communication library](https://github.com/ljbo82/jserial-jni) which is licensed under MIT license.
 
 ## Contact
 
-For general information visit the main project site at https://github.com/ljbo82/jserial.
+For general information visit the main project site at https://github.com/ljbo82/jserial-java.
