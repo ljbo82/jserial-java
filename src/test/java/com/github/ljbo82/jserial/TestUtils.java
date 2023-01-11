@@ -27,7 +27,7 @@ public class TestUtils {
 
         while (true) {
             try {
-                System.out.printf(prompt);
+                System.out.printf("\n%s", prompt);
                 System.out.flush();
                 int index = scanner.nextInt();
                 if (index < 0 || index >= options.length) {

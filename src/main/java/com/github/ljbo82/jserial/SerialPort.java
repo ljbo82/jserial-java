@@ -26,7 +26,6 @@ import java.util.concurrent.Semaphore;
 public class SerialPort implements AutoCloseable {
     private static final int SEMAPHORE_MAX_PERMITS =  2; // Read & Write
     /*pp*/  static final int CLOSED_NATIVE_PORT    = -1;
-    private static boolean inited;
 
     public enum DataBits {
         DATA_BITS_5(5),
@@ -144,6 +143,7 @@ public class SerialPort implements AutoCloseable {
     enum PurgeType {
         RX(0),
         TX(1),
+        @SuppressWarnings("unused")
         RX_TX(2);
 
         private final int nativeCode;
@@ -158,27 +158,18 @@ public class SerialPort implements AutoCloseable {
         }
     }
 
-    public static class TimeoutException extends IOException {}
+    public static class TimeoutException extends Exception {}
 
     public static class Exception extends IOException {}
 
-    public static void initNativeInterface(String baseDir) throws IOException {
-        NativeSerialPort.initNativeInterface(baseDir);
-    }
-
     public static String[] getPortNames() throws IOException {
-        synchronized (SerialPort.class) {
-            if (!inited) {
-                initNativeInterface(null);
-                inited = true;
-            }
+        NativeSerialPort.initNativeInterface();
 
-            String[] portNames;
-            if ((portNames = NativeSerialPort.get_port_names()) == null)
-                NativeSerialPort.throwNativeError();
+        String[] portNames;
+        if ((portNames = NativeSerialPort.getPortNames()) == null)
+            NativeSerialPort.throwNativeError();
 
-            return portNames;
-        }
+        return portNames;
     }
 
     private final String name;
@@ -194,21 +185,16 @@ public class SerialPort implements AutoCloseable {
     private StopBits stopBits;
 
     public SerialPort(String name) throws IOException {
-        synchronized (SerialPort.class) {
-            if (!inited) {
-                initNativeInterface(null);
-                inited = true;
-            }
-        }
+        NativeSerialPort.initNativeInterface();
 
         if ((this.nativeSerialPort = NativeSerialPort.open(name)) == CLOSED_NATIVE_PORT)
             NativeSerialPort.throwNativeError();
 
-        this.readTimeout = NativeSerialPort.get_read_timeout(this.nativeSerialPort);
-        this.baud = NativeSerialPort.get_baud(this.nativeSerialPort);
-        this.dataBits = DataBits.fromNativeCode(NativeSerialPort.get_data_bits(this.nativeSerialPort));
-        this.parity = Parity.fromNativeCode(NativeSerialPort.get_parity(this.nativeSerialPort));
-        this.stopBits = StopBits.fromNativeCode(NativeSerialPort.get_stop_bits(this.nativeSerialPort));
+        this.readTimeout = NativeSerialPort.getReadTimeout(this.nativeSerialPort);
+        this.baud = NativeSerialPort.getBaud(this.nativeSerialPort);
+        this.dataBits = DataBits.fromNativeCode(NativeSerialPort.getDataBits(this.nativeSerialPort));
+        this.parity = Parity.fromNativeCode(NativeSerialPort.getParity(this.nativeSerialPort));
+        this.stopBits = StopBits.fromNativeCode(NativeSerialPort.getStopBits(this.nativeSerialPort));
 
         this.name = name;
         this.inputStream = new SerialPortInputStream(this);
@@ -273,6 +259,7 @@ public class SerialPort implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("unused")
     public void purgeRX() throws IOException {
         try {
             semaphore.acquire(SEMAPHORE_MAX_PERMITS);
@@ -292,6 +279,7 @@ public class SerialPort implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("unused")
     public void purgeTX() throws IOException {
         try {
             semaphore.acquire(SEMAPHORE_MAX_PERMITS);
@@ -321,7 +309,7 @@ public class SerialPort implements AutoCloseable {
             if (millis < 0)
                 throw new IllegalArgumentException("Negative timeout");
 
-            if (!NativeSerialPort.set_read_timeout(nativeSerialPort, millis))
+            if (!NativeSerialPort.setReadTimeout(nativeSerialPort, millis))
                 NativeSerialPort.throwNativeError();
 
             this.readTimeout = millis;
@@ -334,6 +322,7 @@ public class SerialPort implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("unused")
     public String getName() {
         return name;
     }
@@ -386,6 +375,7 @@ public class SerialPort implements AutoCloseable {
         }
     }
 
+    @SuppressWarnings("unused")
     public long getReadTimeout() {
         long readTimeout;
         try {

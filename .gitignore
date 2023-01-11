@@ -1,2 +1,4 @@
 .idea/
 target/
+/jserial.iml
+/src/main/resources/

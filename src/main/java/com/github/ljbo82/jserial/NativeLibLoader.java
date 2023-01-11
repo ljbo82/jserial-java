@@ -25,84 +25,111 @@ abstract class NativeLibLoader {
 
     // region STATIC SCOPE
     // =================================================================================================================
-    public static class InvalidLibException extends Exception {
-        private final File libFile;
-        private final String nativeHost;
+    private static InputStream getEmbeddedResource(String embeddedPath) {
+        return NativeLibLoader.class.getResourceAsStream(embeddedPath);
+    }
 
-        private InvalidLibException(String nativeHost, File libFile) {
-            super(String.format("Invalid lib for %s: %s", nativeHost, libFile.getAbsolutePath()));
+    @SuppressWarnings("UnusedReturnValue")
+    private static boolean mkdir(File dir) throws IOException {
+        if (!dir.exists()) {
+            if (!dir.mkdirs()) {
+                throw new IOException(String.format("Error creating directory %s", dir.getAbsolutePath()));
+            }
 
-            this.nativeHost = nativeHost;
-            this.libFile = libFile;
-        }
+            return true;
+        } else {
+            if (!dir.isDirectory()) {
+                throw new IOException(String.format("Path exists and it does not point to a directory: %s", dir.getAbsolutePath()));
+            }
 
-        public String getNativeHost() {
-            return nativeHost;
-        }
-
-        public File getLibFile() {
-            return libFile;
+            return false;
         }
     }
 
-    private static void extractEmbeddedResource(String embeddedPath, String outputDirPath) throws IOException {
-        createDir(outputDirPath);
-        File libFile = new File(outputDirPath, new File(embeddedPath).getName());
+    private static File createTmpDir(String name) throws IOException {
+        File tmpDir = new File(System.getProperty("java.io.tmpdir"));
 
-        if (libFile.exists())
-            return;
+        if (name != null && !name.isEmpty()) {
+            tmpDir = new File(tmpDir, name);
+            for (int i = 1; tmpDir.exists() && i <= 1000; i++) {
+                tmpDir = new File(tmpDir.getParent(), String.format("%s_%d", name, i));
+            }
 
-        try (OutputStream os = new FileOutputStream(libFile)) {
-            byte[] buffer = new byte[1024];
-            try (InputStream is = getEmbeddedResource(embeddedPath)) {
+            if (tmpDir.exists())
+                throw new IOException("Too many attempts trying to create directory");
+
+            mkdir(tmpDir);
+        }
+
+        return tmpDir;
+    }
+
+    private static File extractEmbeddedResource(String embeddedPath, File outputDir) throws IOException {
+        try (InputStream is = getEmbeddedResource(embeddedPath)) {
+            if (is == null) {
+                throw new IOException(String.format("No such resource: %s", embeddedPath));
+            }
+
+            File libFile = new File(outputDir, embeddedPath);
+            mkdir(libFile.getParentFile());
+
+            //noinspection IOStreamConstructor
+            try (OutputStream os = new FileOutputStream(libFile)) {
+                byte[] buffer = new byte[1024];
                 int read;
                 while ((read = is.read(buffer)) > 0) {
                     os.write(buffer, 0, read);
                 }
             }
+
+            return libFile;
         }
     }
 
-    private static InputStream getEmbeddedResource(String embeddedPath) {
-        return NativeLibLoader.class.getResourceAsStream(embeddedPath);
-    }
-
-    private static boolean isWindows() {
-        return System.getProperty("os.name").startsWith("Win");
-    }
-
-    private static void createDir(String path) throws IOException {
-        File dir = new File(path);
-        if (!dir.exists()) {
-            if (!dir.mkdirs()) {
-                throw new IOException(String.format("Error creating directory %s", dir.getAbsolutePath()));
-            } else {
-                if (dir.getName().startsWith(".") && isWindows()) {
-                    Process p = Runtime.getRuntime().exec(String.format("attrib +H %s", dir.getAbsolutePath()));
-                    try {
-                        p.waitFor();
-                        if (p.exitValue() != 0) {
-                            throw new IOException(String.format("attrib error: %d", p.exitValue()));
-                        }
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
+    private static void deleteDirectory(File dir) throws IOException {
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    deleteDirectory(file);
+                } else {
+                    if (!file.delete()) {
+                        throw new IOException(String.format("Cannot delete file: %s", file.getAbsolutePath()));
                     }
                 }
             }
-        } else {
-            if (!dir.isDirectory()) {
-                throw new IOException(String.format("Path exists and it does not point to a directory: %s", dir.getAbsolutePath()));
-            }
+        }
+
+        if (!dir.delete()) {
+            throw new IOException(String.format("Cannot delete directory: %s", dir.getAbsolutePath()));
         }
     }
     // =================================================================================================================
     // endregion
 
     private final Map<String, Set<String>> libMap = new HashMap<>();
+    private final String tmpDirName;
 
     private boolean inited;
 
-    public NativeLibLoader registerNativeLib(String host, String embeddedLibPath) {
+    @SuppressWarnings("unused")
+    public NativeLibLoader() {
+        this(null);
+    }
+
+    public NativeLibLoader(String tmpDirName) {
+        this.tmpDirName = tmpDirName;
+    }
+
+    @SuppressWarnings("unused")
+    public final String getTmpDirName() {
+        return tmpDirName;
+    }
+
+    public synchronized final NativeLibLoader registerEmbeddedLib(String host, String embeddedLibPath) throws IllegalStateException {
+        if (inited)
+            throw new IllegalStateException("Already initialized");
+
         if (host == null)
             throw new IllegalArgumentException("host cannot be null");
 
@@ -110,6 +137,7 @@ abstract class NativeLibLoader {
             throw new IllegalArgumentException("Null/Empty embedded library path");
 
         Set<String> libs = libMap.get(host);
+        //noinspection Java8MapApi
         if (libs == null) {
             libs = new LinkedHashSet<>();
             libMap.put(host, libs);
@@ -123,11 +151,9 @@ abstract class NativeLibLoader {
 
     protected abstract String getNativeHost();
 
-    protected abstract boolean checkNativeLib(String nativeHost, File libFile);
-
-    public synchronized void init(String outputDirPath) throws IllegalStateException, IOException, InvalidLibException {
+    public synchronized final void init() throws IOException {
         if (inited)
-            throw new IllegalStateException("Already initialized");
+            return;
 
         String nativeHost = getNativeHost();
 
@@ -135,22 +161,20 @@ abstract class NativeLibLoader {
         if (embeddedLibPaths == null)
             return;
 
-        File outputDir = new File(outputDirPath);
-        createDir(outputDir.getAbsolutePath());
+        File tmpDir = createTmpDir(tmpDirName);
+        if (tmpDirName != null && !tmpDirName.isEmpty()) {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    deleteDirectory(tmpDir);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }));
+        }
 
         for (String embeddedLibPath : embeddedLibPaths) {
-            File libFile = new File(outputDir, embeddedLibPath);
-            File parentDir = libFile.getParentFile();
-            createDir(parentDir.getAbsolutePath());
-
-            if (!libFile.exists())
-                extractEmbeddedResource(embeddedLibPath, parentDir.getAbsolutePath());
-
+            File libFile = extractEmbeddedResource(embeddedLibPath, tmpDir);
             System.load(libFile.getAbsolutePath());
-
-            if (!checkNativeLib(nativeHost, libFile)) {
-                throw new InvalidLibException(nativeHost, libFile);
-            }
         }
 
         inited = true;
