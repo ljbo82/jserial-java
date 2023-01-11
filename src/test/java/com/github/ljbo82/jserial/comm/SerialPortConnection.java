@@ -69,7 +69,7 @@ public class SerialPortConnection extends Connection {
     public void purge() throws IOException {
         try {
             //noinspection StatementWithEmptyBody
-            while (getInputStream().read() > 0) {}
+            while (getInputStream().read() >= 0) {}
         } catch (SerialPort.TimeoutException e) {
             // ignore error
         }

@@ -61,6 +61,9 @@ public class SerialPortTest {
             serialConnection.config(2400, DataBits.DATA_BITS_7, Parity.EVEN, StopBits.STOP_BITS_2);
             messageConnection.ping("HELLO");
             System.out.println("DONE!");
+            System.out.print("Restoring default protocol... "); System.out.flush();
+            messageConnection.protocol(9600, DataBits.DATA_BITS_8, Parity.NONE, StopBits.STOP_BITS_1, Mode.MESSAGE);
+            System.out.println("DONE!");
         }
         System.out.println("SUCCESS!");
     }
